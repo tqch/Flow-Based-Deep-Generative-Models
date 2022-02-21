@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from collections import OrderedDict
 import numpy as np
-from solver import bisect
+from utils import bisect
 
 
 class PlanarFlow(nn.Module):
@@ -13,7 +13,7 @@ class PlanarFlow(nn.Module):
     u: expanding/contracting direction
     """
 
-    def __init__(self, input_dim, random_init=False):
+    def __init__(self, input_dim, random_init=True):
         super(PlanarFlow, self).__init__()
         self.input_dim = input_dim
         if random_init:
@@ -56,13 +56,13 @@ class PlanarFlow(nn.Module):
             return fx
 
         fx = np.sum(self.projection.cpu().numpy() * z, axis=-1)
-        parallel = bisect(mapping, fx, x_min=fx - coef, x_max=fx + coef)
+        parallel = bisect(mapping, fx, x_min=fx - coef - 1, x_max=fx + coef + 1)
         hx = np.tanh(parallel + bias)
         return z - self.direction.cpu().numpy() * hx[:, None]
 
 
 class RadialFlow(nn.Module):
-    def __init__(self, input_dim, random_init=False):
+    def __init__(self, input_dim, random_init=True):
         super(RadialFlow, self).__init__()
         self.input_dim = input_dim
         if random_init:
@@ -109,16 +109,14 @@ class NormalizingFlow(nn.Module):
     def __init__(
             self,
             input_dim,
-            n_maps,
-            transformation="planar"
+            maps
     ):
         super(NormalizingFlow, self).__init__()
         self.input_dim = input_dim
-        self.n_maps = n_maps
-        self.transformation = transformation
+        self.n_layers = len(maps)
         self.flows = nn.Sequential(OrderedDict(
-            (f"flow_{i}", self.get_flow())
-            for i in range(self.n_maps)
+            (f"flow_{i}", self._get_flow(mp))
+            for i, mp in enumerate(maps)
         ))
 
     def __iter__(self):
@@ -126,18 +124,20 @@ class NormalizingFlow(nn.Module):
         return self
 
     def __next__(self):
-        if self.map_id < self.n_maps:
+        if self.map_id < self.n_layers:
             flow = getattr(self.flows, f"flow_{self.map_id}")
             self.map_id += 1
             return flow
         else:
             raise StopIteration
-
-    def get_flow(self):
-        if self.transformation == "planar":
+    
+    def _get_flow(self, flow_type):
+        if flow_type == "planar":
             return PlanarFlow(self.input_dim)
-        elif self.transformation == "radial":
+        elif flow_type == "radial":
             return RadialFlow(self.input_dim)
+        else:
+            raise ValueError("Invalid flow type!")
 
     def forward(self, x):
         logp = 0
