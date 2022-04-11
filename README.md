@@ -2,7 +2,21 @@
 
 This is the course final project for SDS 384 Statistical Maching Learning Optimization.
 
-References:
+## Models implemented (current):
+- Basic flows (planar & radial)
+- RealNVP (adapted from the original TensorFlow implementation [[link]](https://git.dst.etit.tu-chemnitz.de/external/tf-models/-/tree/master/research/real_nvp))
+
+## RealNVP Usage:
+```
+# mnist
+python train --dataset mnist --hidden_dim 32 --num_levels 2 --num_residual_blocks 5
+# cifar10
+python train --dataset cifar10 --hidden_dim 64 --num_levels 2 --num_residual_blocks 8
+# celeba
+python train --dataset celeba --hidden_dim 32 --num_levels 5 --num_residual_blocks 2
+```
+
+## References:
 
 - Rezende, D. &amp; Mohamed, S.. (2015). Variational Inference with Normalizing Flows. <i>Proceedings of the 32nd International Conference on Machine Learning</i>, in <i>Proceedings of Machine Learning Research</i> 37:1530-1538 Available from https://proceedings.mlr.press/v37/rezende15.html.
 - Dinh, L., Sohl-Dickstein, J., & Bengio, S. (2017). Density estimation using Real NVP. <i>5th International Conference on Learning Representations</i>, ICLR 2017, Toulon, France, April 24-26, 2017, Conference Track Proceedings. Opgehaal van https://openreview.net/forum?id=HkpbnH9lx

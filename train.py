@@ -20,10 +20,12 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--root", type=str, default="~/datasets")
-    parser.add_device("--device", type=str, default="cuda:0")
+    parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--dataset", choices=["mnist", "cifar10", "celeba"])
-    parser.add_argument("--batch_size", type=str, default=64)
-    parser.add_argument("--num_residual_blocks", type=int, default=5)
+    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--hidden_dim", type=int, default=0)
+    parser.add_argument("--num_levels", type=int, default=0)
+    parser.add_argument("--num_residual_blocks", type=int, default=0)
     parser.add_argument("--img_save_dir", type=str, default="./figs")
     parser.add_argument("--model_save_dir", type=str, default="./models")
     parser.add_argument("--lr", type=float, default=0.001)
@@ -33,19 +35,23 @@ if __name__ == "__main__":
     root = os.path.expanduser(args.root)
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
-    if args.datasets == "mnist":
+    # default (hype-)parameters
+
+    print(f"Loading model configs of {args.dataset}...")
+
+    if args.dataset == "mnist":
         channels = 1
         image_size = 32
         hidden_dim = 32
         num_levels = 2
         num_residual_blocks = 5
-    elif args.datasets == "cifar10":
+    elif args.dataset == "cifar10":
         channels = 3
         image_size = 32
         hidden_dim = 64
         num_levels = 2
         num_residual_blocks = 8
-    elif args.datasets == "celeba":
+    elif args.dataset == "celeba":
         channels = 3
         image_size = 64
         hidden_dim = 32
@@ -53,6 +59,26 @@ if __name__ == "__main__":
         num_residual_blocks = 2
     else:
         raise NotImplementedError
+
+    if args.num_levels <= 0:
+        print("num_levels")
+        print("\tNon-positive input detected!")
+        print(f"\tUsing default value for {args.dataset}: {num_levels}")
+    else:
+        num_levels = args.num_levels
+    if args.num_residual_blocks <= 0:
+        print("num_residual_blocks")
+        print("\tNon-positive input detected!")
+        print(f"\tUsing default value for {args.dataset}: {num_residual_blocks}")
+    else:
+        num_residual_blocks = args.num_residual_blocks
+    if args.hidden_dim <= 0:
+        print("hidden_dim")
+        print("\tNon-positive input detected!")
+        print(f"\tUsing default value for {args.dataset}: {hidden_dim}")
+    else:
+        hidden_dim = args.hidden_dim
+
     train_loader = get_data(root, dataset=args.dataset, batch_size=args.batch_size, num_workers=4)
 
     input_shape = (channels, image_size, image_size)
@@ -64,7 +90,7 @@ if __name__ == "__main__":
         image_size // 2 ** (num_levels - 1)
     ) if factor_out is None else input_shape
 
-    img_save_dir = args.img_save_dir
+    img_save_dir = os.path.join(args.img_save_dir, args.dataset)
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir)
     model_save_dir = args.model_save_dir
@@ -74,11 +100,9 @@ if __name__ == "__main__":
     model = RealNVP(input_shape, num_residual_blocks=num_residual_blocks,
                     hidden_dim=hidden_dim, num_levels=num_levels, factor_out=factor_out)
     model.to(device)
+    optimizer = Adam(model.parameters(), lr=args.lr)
 
     n_epochs = args.n_epochs
-
-    optimizer = Adam(model.parameters(), lr=0.001)
-
     for e in range(n_epochs):
         with tqdm(train_loader, desc=f"{e + 1}/{n_epochs} epochs") as t:
             train_neg_logp = 0
@@ -105,10 +129,10 @@ if __name__ == "__main__":
                     plt.figure(figsize=(16, 16))
                     grid = make_grid(x.cpu(), nrow=4)
                     _ = plt.imshow(grid.numpy().transpose(1, 2, 0))
-                    plt.savefig(os.path.join(img_save_dir, f"realnvp_celeba_epoch_{e+1}.png"))
+                    plt.savefig(os.path.join(img_save_dir, f"realnvp_{args.dataset}_epoch_{e+1}.png"))
                     plt.close()
                     torch.save(
                         model.state_dict(),
-                        os.path.join(model_save_dir, "models/celeba_realnvp.pt")
+                        os.path.join(model_save_dir, f"{args.dataset}_realnvp.pt")
                     )
 

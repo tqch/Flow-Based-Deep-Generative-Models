@@ -24,7 +24,7 @@ class CouplingLayer(nn.Module):
             factor * in_channels,
             num_blocks=num_residual_blocks
         )
-        self.tanh_scale = nn.Parameter(torch.ones(1))  # scale parameter for the tanh output
+        self.tanh_scale = nn.Parameter(torch.ones(factor * in_channels // 2))  # scale parameter for the tanh output
         self.bn1 = DecoupledBatchNorm2d(factor * in_channels // 2, scale=False)  # pre-coupling
         self.bn2 = DecoupledBatchNorm2d(factor * in_channels // 2, scale=False)  # post-coupling
 
@@ -44,7 +44,7 @@ class CouplingLayer(nn.Module):
         if self.mask_type == "channel-wise":
             xx = self.extend(x)
             s, t = self.conv(xx).chunk(2, dim=1)
-            s = torch.tanh(s) * self.tanh_scale
+            s = torch.tanh(s) * self.tanh_scale[None, :, None, None]
             x_ = torch.exp(s) * x[:, ~self.mask, :, :] + t
             x[:, ~self.mask, :, :] = self.bn2(x_)
             factor = 1
@@ -52,7 +52,7 @@ class CouplingLayer(nn.Module):
             self.mask = self.mask.to(x.device)
             xx = self.extend(x)
             s, t = self.conv(xx).chunk(2, dim=1)
-            s = torch.tanh(s) * self.tanh_scale
+            s = torch.tanh(s) * self.tanh_scale[None, :, None, None]
             s = (1 - self.mask) * s
             x_ = (torch.exp(s) * x + t) * (1 - self.mask)
             x = self.mask * x + (1 - self.mask) * self.bn2(x_)
@@ -74,13 +74,13 @@ class CouplingLayer(nn.Module):
             out = torch.zeros_like(x)
             xx = self.extend(x)
             s, t = self.conv(xx).chunk(2, dim=1)
-            s = torch.tanh(s) * self.tanh_scale
+            s = torch.tanh(s) * self.tanh_scale[None, :, None, None]
             out[:, self.mask, :, :] = x[:, self.mask, :, :]
             out[:, ~self.mask, :, :] = (self.debatchnorm(x[:, ~self.mask, :, :]) - t) * torch.exp(-s)
         else:
             xx = self.extend(x)
             s, t = self.conv(xx).chunk(2, dim=1)
-            s = torch.tanh(s) * self.tanh_scale
+            s = torch.tanh(s) * self.tanh_scale[None, :, None, None]
             out = self.debatchnorm((1 - self.mask) * x)
             out = self.mask * x + (1 - self.mask) * (out - t) * torch.exp(-s)
         return out
@@ -109,7 +109,7 @@ class CouplingLayer(nn.Module):
 
 class CombinedLayer(nn.Module):
 
-    def __init__(self, input_shape, hidden_dim, num_residual_blocks, last_level=False):
+    def __init__(self, input_shape, hidden_dim, num_residual_blocks, last_level=False, multiplier=2):
         super(CombinedLayer, self).__init__()
         self.input_shape = input_shape
         self.hidden_dim = hidden_dim
@@ -126,13 +126,14 @@ class CombinedLayer(nn.Module):
             self.spatial.append(
                 ("layer_3", CouplingLayer(in_channels, hidden_dim, num_residual_blocks, 1 - self.mask_type1)))
         self.spatial = nn.Sequential(OrderedDict(self.spatial))
+        self.multiplier = multiplier  # multiplier of hidden_dim in channel-wise layer
 
         if not last_level:
             in_channels = 4 * in_channels
             self.channelwise = nn.Sequential(OrderedDict([
-                ("layer_0", CouplingLayer(in_channels, 2 * hidden_dim, num_residual_blocks, self.mask_type2)),
-                ("layer_1", CouplingLayer(in_channels, 2 * hidden_dim, num_residual_blocks, ~self.mask_type2)),
-                ("layer_2", CouplingLayer(in_channels, 2 * hidden_dim, num_residual_blocks, self.mask_type2))
+                ("layer_0", CouplingLayer(in_channels, multiplier * hidden_dim, num_residual_blocks, self.mask_type2)),
+                ("layer_1", CouplingLayer(in_channels, multiplier * hidden_dim, num_residual_blocks, ~self.mask_type2)),
+                ("layer_2", CouplingLayer(in_channels, multiplier * hidden_dim, num_residual_blocks, self.mask_type2))
             ]))
 
     def _make_masks(self):
@@ -199,9 +200,9 @@ class RealNVP(nn.Module):
         self.num_levels = num_levels
         self.factor_out = factor_out
         if num_levels < 3:
-            self.level_0 = CombinedLayer(input_shape, hidden_dim, num_residual_blocks)
+            self.level_0 = CombinedLayer(input_shape, hidden_dim, num_residual_blocks, multiplier=1)
             input_shape = self.update_shape(input_shape)
-            self.level_1 = CombinedLayer(input_shape, hidden_dim, num_residual_blocks, last_level=True)
+            self.level_1 = CombinedLayer(input_shape, hidden_dim, num_residual_blocks, last_level=True, multiplier=1)
         else:
             for i in range(num_levels - 1):
                 setattr(self, f"level_{i}", CombinedLayer(input_shape, hidden_dim * 2 ** i, num_residual_blocks))
