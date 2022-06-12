@@ -78,6 +78,7 @@ class CouplingLayer(nn.Module):
             out[:, self.mask, :, :] = x[:, self.mask, :, :]
             out[:, ~self.mask, :, :] = (self.debatchnorm(x[:, ~self.mask, :, :]) - t) * torch.exp(-s)
         else:
+            self.mask = self.mask.to(x.device)
             xx = self.extend(x)
             s, t = self.conv(xx).chunk(2, dim=1)
             s = torch.tanh(s) * self.tanh_scale[None, :, None, None]

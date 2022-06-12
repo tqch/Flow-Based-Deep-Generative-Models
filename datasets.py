@@ -8,7 +8,7 @@ from collections import namedtuple
 from utils import kaggle_setup
 from zipfile import ZipFile
 
-FROM_KAGGLE = True
+FROM_KAGGLE = False
 CSV = namedtuple("CSV", ["header", "index", "data"])
 
 

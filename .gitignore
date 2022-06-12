@@ -1,9 +1,7 @@
 .ipynb_checkpoints
-*/.ipynb_checkpoints
 .idea
-*/.idea
 __pycache__
-*/__pycache__
-testing/
-metrics/
-demo/
+testing
+metrics
+demo
+figs

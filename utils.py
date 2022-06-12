@@ -65,4 +65,3 @@ def kaggle_setup():
             def opener(path, flags): return os.open(path, flags, mode=0o600)
             with open(user_auth_token, "w", opener=opener) as f:
                 json.dump({"username": username, "key": key}, f)
-

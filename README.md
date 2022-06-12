@@ -19,6 +19,9 @@ python train.py --dataset celeba --hidden_dim 32 --num_levels 5 --num_residual_b
 ## Notes on CelebA dataset
 It has been a well-known issue that first-time download of CelebA via `torchvision` API, i.e. `torchvision.datasets.CelebA` will fail almost surely with option `download=True` since Google imposed their restriction on data access and daily limit. One solution is to directly open the dataset's official Google Drive link [[here]](https://drive.google.com/drive/folders/0B7EVK8r0v71pWEZsZE9oNnFzTm8?resourcekey=0-5BR16BdXnb8hVj6CNHKzLg&usp=sharing) in a browser and download it. Alternatively, we may resort to the `kaggle` datasets API. To use this solution, please set `FROM_KAGGLE` in the `datasets.py` to `True`. Plus, you will need a Kaggle account and an authentication token. 
 
+## Generated Celeb-A samples over 30 epochs
+![animation](./assets/animation.gif)
+
 ## References:
 
 - Rezende, D. &amp; Mohamed, S.. (2015). Variational Inference with Normalizing Flows. <i>Proceedings of the 32nd International Conference on Machine Learning</i>, in <i>Proceedings of Machine Learning Research</i> 37:1530-1538 Available from https://proceedings.mlr.press/v37/rezende15.html.

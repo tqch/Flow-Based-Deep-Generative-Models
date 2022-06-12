@@ -22,6 +22,7 @@ if __name__ == "__main__":
     parser.add_argument("--root", type=str, default="~/datasets")
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--dataset", choices=["mnist", "cifar10", "celeba"])
+    parser.add_argument("--download", action="store_true")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--hidden_dim", type=int, default=0)
     parser.add_argument("--num_levels", type=int, default=0)
@@ -30,6 +31,9 @@ if __name__ == "__main__":
     parser.add_argument("--model_save_dir", type=str, default="./models")
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--n_epochs", type=int, default=30)
+    parser.add_argument("--chkpt-intv", type=int, default=5)
+    parser.add_argument("--restart", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     root = os.path.expanduser(args.root)
@@ -79,7 +83,7 @@ if __name__ == "__main__":
     else:
         hidden_dim = args.hidden_dim
 
-    train_loader = get_data(root, dataset=args.dataset, batch_size=args.batch_size, num_workers=4)
+    train_loader = get_data(root, dataset=args.dataset, download=args.download, batch_size=args.batch_size)
 
     input_shape = (channels, image_size, image_size)
     factor_out = 0.5
@@ -102,13 +106,30 @@ if __name__ == "__main__":
     model.to(device)
     optimizer = Adam(model.parameters(), lr=args.lr)
 
+    start_epoch = 0
+    chkpt_path = os.path.join(model_save_dir, f"{args.dataset}_realnvp.pt")
+    if args.restart:
+        try:
+            chkpt = torch.load(chkpt_path, map_location=device)
+            model.load_state_dict(chkpt["model"])
+            optimizer.load_state_dict(chkpt["optimizer"])
+            start_epoch = chkpt["epoch"]
+            del chkpt
+        except FileNotFoundError:
+            print("Checkpoint file does not exists!")
+            print("Training from scratch...")
+
+    # fixed latent code
+    z = torch.randn((64,) + sample_shape)
     n_epochs = args.n_epochs
-    for e in range(n_epochs):
+    for e in range(start_epoch, n_epochs):
         with tqdm(train_loader, desc=f"{e + 1}/{n_epochs} epochs") as t:
             train_neg_logp = 0
             train_total = 0
             model.train()
             for i, (x, _) in enumerate(t):
+                if args.dry_run and i < (len(train_loader) - 1):
+                    continue
                 x = pixel_transform(x)
                 _, neg_logp = model(x.to(device))
                 l2_reg = model.l2_reg()
@@ -120,19 +141,20 @@ if __name__ == "__main__":
                 train_neg_logp += neg_logp.item() * x.size(0)
                 train_total += x.size(0)
                 t.set_postfix({"train_neg_logp": train_neg_logp / train_total})
-                if i == len(train_loader)-1:
+                if i == len(train_loader) - 1:
                     model.eval()
                     with torch.no_grad():
-                        z = torch.randn((16,) + sample_shape)
                         x = model.backward(z.to(device))
                     x = pixel_transform(x, inverse=True)
-                    plt.figure(figsize=(16, 16))
-                    grid = make_grid(x.cpu(), nrow=4)
-                    _ = plt.imshow(grid.numpy().transpose(1, 2, 0))
-                    plt.savefig(os.path.join(img_save_dir, f"realnvp_{args.dataset}_epoch_{e+1}.png"))
-                    plt.close()
-                    torch.save(
-                        model.state_dict(),
-                        os.path.join(model_save_dir, f"{args.dataset}_realnvp.pt")
+                    img = make_grid(x.cpu(), nrow=8)
+                    _ = plt.imsave(
+                        os.path.join(img_save_dir, f"realnvp_{args.dataset}_epoch_{e + 1}.png"),
+                        img.numpy().transpose(1, 2, 0)
                     )
-
+                    # save a checkpoint every {args.chkpt_intv} epochs
+                    if (e + 1) % args.chkpt_intv == 0:
+                        torch.save({
+                            "model": model.state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                            "epoch": e + 1
+                        }, chkpt_path)
